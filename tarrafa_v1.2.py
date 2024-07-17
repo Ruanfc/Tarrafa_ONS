@@ -8,12 +8,22 @@ import docx2txt
 
 class DocxSearchApp(tk.Tk):
     def __init__(self):
+        """
+        Initialize the DocxSearchApp application.
+
+        This sets up the main window and initializes the user interface components.
+        """
         super().__init__()
         self.title("Tarrafa PDP - Busca em Documentos .docx")
         self.geometry("800x600")
         self.init_ui()
 
     def init_ui(self):
+        """
+        Initialize the user interface components.
+
+        This method creates and places all the widgets in the main window.
+        """
         self.progress_bar = ttk.Progressbar(self, orient="horizontal", length=400, mode="determinate")
         self.search_label = tk.Label(self, text="Texto para Buscar:")
         self.search_input = tk.Entry(self, width=50)
@@ -32,6 +42,7 @@ class DocxSearchApp(tk.Tk):
         self.message_label = tk.Label(self, text="", fg="red")
         self.results_list = tk.Listbox(self, width=80, height=15)
 
+        # Layout configuration
         self.progress_bar.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky='we')
         self.search_label.grid(row=1, column=0, padx=5, pady=5, sticky='e')
         self.search_input.grid(row=1, column=1, padx=5, pady=5, columnspan=2, sticky='we')
@@ -48,6 +59,7 @@ class DocxSearchApp(tk.Tk):
         self.message_label.grid(row=7, column=0, columnspan=3, padx=10, pady=5, sticky='we')
         self.results_list.grid(row=8, column=0, columnspan=3, padx=10, pady=10, sticky='nsew')
 
+        # Cheat Sheet for regex
         self.cheat_sheet_label = tk.Label(self, text="Cheat Sheet de Expressões Regulares:")
         self.cheat_sheet_text = tk.Text(self, width=60, height=15, wrap='word', state='normal')
         self.cheat_sheet_text.insert(tk.END, self.get_cheat_sheet())
@@ -56,11 +68,18 @@ class DocxSearchApp(tk.Tk):
         self.cheat_sheet_label.grid(row=0, column=3, padx=10, pady=10, sticky='nw')
         self.cheat_sheet_text.grid(row=1, column=3, rowspan=8, padx=10, pady=10, sticky='nsew')
 
+        # Grid configuration to make the UI responsive
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(3, weight=1)
         self.grid_rowconfigure(8, weight=1)
 
     def get_cheat_sheet(self):
+        """
+        Provides a cheat sheet for regular expressions.
+
+        Returns:
+            str: A string containing the cheat sheet.
+        """
         return (
             "Cheat Sheet de Expressões Regulares\n"
             "\n"
@@ -119,16 +138,32 @@ class DocxSearchApp(tk.Tk):
         )
 
     def browse_directory(self):
+        """
+        Opens a dialog to select the directory for searching .docx files.
+
+        This method updates the directory_input Entry widget with the selected directory path.
+        """
         directory = filedialog.askdirectory()
         self.directory_input.delete(0, tk.END)
         self.directory_input.insert(0, directory)
 
     def browse_output_directory(self):
+        """
+        Opens a dialog to select the output directory for saving search results.
+
+        This method updates the output_input Entry widget with the selected output directory path.
+        """
         output_directory = filedialog.askdirectory()
         self.output_input.delete(0, tk.END)
         self.output_input.insert(0, output_directory)
 
     def start_search(self):
+        """
+        Initiates the search process based on user inputs.
+
+        This method retrieves the search string, search directory, and output directory from the user inputs,
+        and starts the search process if all inputs are provided. It also handles the UI updates for search progress.
+        """
         search_string = self.search_input.get()
         search_directory = self.directory_input.get()
         self.output_directory = self.output_input.get()
@@ -151,6 +186,15 @@ class DocxSearchApp(tk.Tk):
             messagebox.showwarning("Erro de Entrada", "Por favor, forneça o texto para buscar, o diretório de busca e o diretório de saída.")
 
     def search_files(self, input_string):
+        """
+        Searches through the .docx files for the given input string.
+
+        Args:
+            input_string (str): The string or regex pattern to search for.
+
+        This method processes each .docx file to find matches for the input string and updates the results list.
+        It also handles the progress bar updates and error reporting.
+        """
         if self.files:
             filename = self.files.pop(0)
             try:
@@ -177,15 +221,35 @@ class DocxSearchApp(tk.Tk):
             self.update_results([file for file, _ in self.doclist])
 
     def remove_ignored_sections(self, text, start_marker, end_marker):
+        """
+        Removes sections of text between the given start and end markers.
+
+        Args:
+            text (str): The text to process.
+            start_marker (str): The starting marker of the section to ignore.
+            end_marker (str): The ending marker of the section to ignore.
+
+        Returns:
+            str: The processed text with specified sections removed.
+        """
         pattern = re.compile(f"(?={start_marker}).*?(?<={end_marker})", re.DOTALL)
         return re.sub(pattern, "", text)
 
-
     def save_results(self):
+        """
+        Saves the search results to both Excel and text files.
+
+        This method calls the save_results_to_excel and save_results_to_txt methods to save the search results.
+        """
         self.save_results_to_excel()
         self.save_results_to_txt()
 
     def save_results_to_excel(self):
+        """
+        Saves the search results to an Excel file.
+
+        This method creates an Excel workbook, adds the search results, and saves it to the specified output directory.
+        """
         try:
             workbook = openpyxl.Workbook()
             sheet = workbook.active
@@ -202,6 +266,11 @@ class DocxSearchApp(tk.Tk):
             self.report_error(f"Falha ao salvar os resultados no Excel: {e}")
 
     def save_results_to_txt(self):
+        """
+        Saves the search results to a text file.
+
+        This method creates a text file, adds the search results, and saves it to the specified output directory.
+        """
         try:
             output_path = os.path.join(self.output_directory, "resultados_busca.txt")
             with open(output_path, 'w') as file:
@@ -211,20 +280,57 @@ class DocxSearchApp(tk.Tk):
             self.report_error(f"Falha ao salvar os resultados no arquivo de texto: {e}")
 
     def update_results(self, filenames):
+        """
+        Updates the UI to indicate that the search is complete.
+
+        Args:
+            filenames (list): List of filenames that matched the search.
+
+        This method updates the message label and progress bar to indicate the completion of the search.
+        """
         self.message_label.config(text="Busca concluída. Resultados salvos no Excel e no arquivo de texto.", fg="green")
         self.progress_bar['value'] = 100
 
     def update_progress(self):
+        """
+        Updates the progress bar based on the number of files processed.
+
+        This method calculates the current progress and updates the progress bar accordingly.
+        """
         progress = (self.processed_files / self.total_files) * 100
         self.progress_bar['value'] = progress
 
     def report_progress(self, filename):
+        """
+        Reports the progress of the current file being processed.
+
+        Args:
+            filename (str): The name of the file being processed.
+
+        This method updates the message label to show the current file being analyzed.
+        """
         self.message_label.config(text=f"Analisando: {os.path.basename(filename)}", fg="black")
 
     def report_error(self, message):
+        """
+        Reports an error message to the UI.
+
+        Args:
+            message (str): The error message to display.
+
+        This method updates the message label to display the error message.
+        """
         self.message_label.config(text=message, fg="red")
 
     def report_message(self, message):
+        """
+        Reports a general message to the UI.
+
+        Args:
+            message (str): The message to display.
+
+        This method updates the message label to display the provided message.
+        """
         self.message_label.config(text=message, fg="black")
 
 if __name__ == '__main__':
