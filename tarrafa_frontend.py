@@ -5,8 +5,9 @@ import os
 from PySide6.QtWidgets import QWidget, QApplication, QFileDialog, QGroupBox, QGridLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QHBoxLayout, QVBoxLayout, QCheckBox
 from PySide6.QtCore import QProcess
 
-from PySide6.QtCore import QCoreApplication, QIODevice
+from PySide6.QtCore import QCoreApplication, QIODevice, QByteArray
 from PySide6.QtNetwork import QTcpSocket
+import json
 
 import time
 # from tarrafa_server import Tarrafa
@@ -15,16 +16,19 @@ class MainWindow(QWidget):
         super().__init__()
         # Configurações
         self.grid = QGridLayout()
-        self.inputLabel = QLabel("Entrada:")
+        self.inputLabel = QLabel("Diretorio de Busca:")
         self.inputLineEdit = QLineEdit()
         self.inputButton = QPushButton("Procurar")
-        self.outputLabel = QLabel("Saída:")
+        self.outputLabel = QLabel("Diretório de Saída:")
         self.outputLineEdit = QLineEdit()
         self.outputButton = QPushButton("Procurar")
         self.regexTextEdit = QTextEdit() # Descobrir como colocar texto sugestivo e regular as dimensões
         # Check boxes
-        self.motivoRevisaoCheckBox = QCheckBox("Desconsiderar Motivo da Revisão")
-        self.listaDistribuicaoCheckBox = QCheckBox("Desconsiderar Lista de distribuição")
+        self.motivoRevisaoCheckBox = QCheckBox("Ignorar Motivo da Revisão")
+        self.listaDistribuicaoCheckBox = QCheckBox("Ignorar Lista de distribuição")
+        # Message Label
+        self.messageLabel = QLabel("")
+
         self.inputButton.clicked.connect(self.getInputDir)
         self.outputButton.clicked.connect(self.getoutputDir)
         self.grid.addWidget(self.inputLabel, 0,0)
@@ -36,7 +40,7 @@ class MainWindow(QWidget):
         self.grid.addWidget(self.regexTextEdit, 2,0, 1, 3)
         self.grid.addWidget(self.motivoRevisaoCheckBox, 3,0, 1,3)
         self.grid.addWidget(self.listaDistribuicaoCheckBox, 4,0, 1,3)
-
+        self.grid.addWidget(self.messageLabel, 5,0, 1,3)
         # Botões
         self.actionLayout = QHBoxLayout()
         self.gerarExcel_btn = QPushButton("Salvar Excel")
@@ -46,10 +50,13 @@ class MainWindow(QWidget):
         self.actionLayout.addWidget(self.gerarTxt_btn)
         self.actionLayout.addWidget(self.run_btn)
 
-        # self.gerarExcel_btn.clicked.connect(self.)
+        self.gerarExcel_btn.clicked.connect(self.salvar_excel)
         self.gerarTxt_btn.clicked.connect(self.gerarTxt)
         self.run_btn.clicked.connect(self.rodar_tarrafa)
 
+       
+
+        # Vertical Layout
         self.VLayout = QVBoxLayout()
         self.VLayout.addLayout(self.grid)
         self.VLayout.addLayout(self.actionLayout)
@@ -77,6 +84,9 @@ class MainWindow(QWidget):
         self.outputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd())
         self.outputLineEdit.setText(self.outputDir)
     @QtCore.Slot()
+    def salvar_excel(self):
+        pass
+    @QtCore.Slot()
     def gerarTxt(self):
         # tarrafa.convertAll(self.outputDir)
         pass
@@ -84,20 +94,18 @@ class MainWindow(QWidget):
     @QtCore.Slot()
     def rodar_tarrafa(self):
         text = self.regexTextEdit.toPlainText()
-        text = r"{}".format(text)
-        if text != r"":
-            client.write(bytes(text,'utf-8'))
-            
-        # tarrafa.search_regex(text)
-        # client.write(bytes("search_regex(r'" + str(text) + "')",'utf-8'))
-        # pass
-        # Imprime lista final em um canto
+        if text != "":
+            dict2send = {"comando": "search_regex", "args" : (text,)}
+            json_str = json.dumps(dict2send)
+            json_byte_array = QByteArray(json_str.encode("utf-8"))
+            client.write(json_byte_array)
+
 
 class MyTcpClient(QTcpSocket):
     def __init__(self):
         super().__init__()
-        self.p = None
-        self.start_process()
+        # self.p = None
+        # self.start_process()
 
         self.connected.connect(self.on_connected)
         self.readyRead.connect(self.read_data)
