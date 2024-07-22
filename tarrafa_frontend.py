@@ -121,6 +121,7 @@ class MyTcpClient(QTcpSocket):
         while self.bytesAvailable():
             data = self.readAll()
             print(f"Received from server: {data.data().decode('utf-8')}")
+            # TODO: Fazer aparecer dados na interface
 
     def on_error(self, socket_error):
         print(f"Socket error: {self.errorString()}")

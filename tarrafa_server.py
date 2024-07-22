@@ -57,12 +57,12 @@ class Tarrafa():
                     # Processa os dados e prepara resposta
                     return_obj = eval("self." + data["comando"] + f"(*{data['args']})")
                     response = {"status": "success", "received": return_obj}
-                    response_message = json.dumps(response)
+                    response_message = json.dumps(response, ensure_ascii=False)
                     client_socket.sendall(response_message.encode('utf-8'))
                 except json.JSONDecodeError:
                     print('Received invalid JSON data')
                     response = {"status": "error", "message": "Invalid JSON"}
-                    client_socket.sendall(json.dumps(response).encode("utf-8"))
+                    client_socket.sendall(json.dumps(response, ensure_ascii=False).encode("utf-8"))
                 except Exception as e:
                     print(f'Error: {e}')
                     break
