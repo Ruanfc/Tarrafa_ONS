@@ -1,0 +1,24 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flask-SocketIO</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.3/socket.io.js"></script>
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', (event) => {
+            var socket = io();
+
+            socket.on('connect', function() {
+                socket.send('User has connected!');
+            });
+
+            socket.on('message', function(msg) {
+                console.log('Received message: ' + msg);
+            });
+        });
+    </script>
+</head>
+<body>
+    <h1>Flask-SocketIO</h1>
+</body>
+</html>

@@ -2,18 +2,52 @@ import sys
 import random
 from PySide6 import QtCore, QtGui
 import os
-from PySide6.QtWidgets import QWidget, QApplication, QFileDialog, QGroupBox, QGridLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QHBoxLayout, QVBoxLayout, QCheckBox
+from PySide6.QtWidgets import QMainWindow, QWidget, QApplication, QFileDialog, QGroupBox, QGridLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QHBoxLayout, QVBoxLayout, QCheckBox
 from PySide6.QtCore import QProcess
 
 from PySide6.QtCore import QCoreApplication, QIODevice, QByteArray
+from PySide6.QtCore import Slot, Signal, QObject, QThread
 from PySide6.QtNetwork import QTcpSocket
 import json
-
+import websocket
+import socketio
+import threading
 import time
-# from tarrafa_server import Tarrafa
+
+class SocketClient(QThread):
+    message_received = Signal(str)
+    def __init__(self):
+        super().__init__()
+        self.sio = socketio.Client()
+
+    def run(self):
+        @self.sio.event
+        def connect():
+            print("Connection established")
+            self.sio.send("User has connected!")
+
+        @self.sio.event
+        def message(data):
+            print("Message received", data)
+            self.message_received.emit(data)
+        
+        @self.sio.event
+        def disconnect():
+            print("Disconnected from server")
+        
+        self.sio.connect("http://localhost:5000")
+
+    def send_message(self, message):
+        self.sio.send(message)
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
+        # QWidget.__init__(self)
+        # socketio.AsyncClientNamespace.__init__(self, namespace)
+        self.socket_client = SocketClient()
+        self.socket_client.message_received.connect(self.display_message)
+        self.socket_client.start()
         # Configurações
         self.grid = QGridLayout()
         self.inputLabel = QLabel("Diretorio de Busca:")
@@ -54,8 +88,6 @@ class MainWindow(QWidget):
         self.gerarTxt_btn.clicked.connect(self.gerarTxt)
         self.run_btn.clicked.connect(self.rodar_tarrafa)
 
-       
-
         # Vertical Layout
         self.VLayout = QVBoxLayout()
         self.VLayout.addLayout(self.grid)
@@ -63,43 +95,42 @@ class MainWindow(QWidget):
 
         self.setLayout(self.VLayout)
         self.setWindowTitle("Tarrafa")
-        # self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"]
 
-        # self.button = QtWidgets.QPushButton("Click me!")
-        # self.text = QtWidgets.QLabel("Hello World",
-        #                              alignment=QtCore.Qt.AlignCenter)
+        # websocket.enableTrace(True)
+        # self.ws = websocket.WebSocketApp("ws://localhost:5000", on_message= self.on_message)
+        # self.ws.run_forever()
 
-        # self.layout = QtWidgets.QVBoxLayout(self)
-        # self.layout.addWidget(self.text)
-        # self.layout.addWidget(self.button)
-
-        # self.button.clicked.connect(self.magic)
+    def on_message(self, message):
+        print(message)
 
     @QtCore.Slot()
     def getInputDir(self):
-        self.inputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd())
+        self.inputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd()).replace("/", os.path.sep)
         self.inputLineEdit.setText(self.inputDir)
     @QtCore.Slot()
     def getoutputDir(self):
-        self.outputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd())
+        self.outputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd()).replace("/", os.path.sep)
         self.outputLineEdit.setText(self.outputDir)
+        
     @QtCore.Slot()
     def salvar_excel(self):
         pass
+
     @QtCore.Slot()
     def gerarTxt(self):
-        # tarrafa.convertAll(self.outputDir)
-        pass
+        if (self.inputDir) and (self.outputDir):
+            # self.send2server("convertAll", "teste")
+            self.socket_client.sio.emit("convertAll", (self.inputDir, self.outputDir))
 
     @QtCore.Slot()
     def rodar_tarrafa(self):
         text = self.regexTextEdit.toPlainText()
         if text != "":
-            dict2send = {"comando": "search_regex", "args" : (text,)}
-            json_str = json.dumps(dict2send)
-            json_byte_array = QByteArray(json_str.encode("utf-8"))
-            client.write(json_byte_array)
-
+            self.socket_client.sio.emit("search_regex", (text,))
+    
+    def display_message(self, message):
+        # self.text_edit.append(f"Server: {message}")
+        pass
 
 class MyTcpClient(QTcpSocket):
     def __init__(self):
@@ -120,7 +151,8 @@ class MyTcpClient(QTcpSocket):
 
     def on_connected(self):
         print("Connected to server")
-        self.write(b'Hello, Server!')
+        # self.write(b'Hello, Server!')
+        # self.send2server("print", ("Hello, Server",))
         # self.write(b"print('Hello, Server!')")
 
     def read_data(self):
@@ -129,7 +161,7 @@ class MyTcpClient(QTcpSocket):
             print(f"Received from server: {data.data().decode('utf-8')}")
 
     def on_error(self, socket_error):
-        print(f"Socket error: {self.errorString()}")
+        print(f"Socket error: {self.errorString()}; {socket_error}")
         QCoreApplication.instance().quit()
 
 
@@ -171,12 +203,56 @@ class MyTcpClient(QTcpSocket):
         # self.message("Process finished.")
         print("Process Finished")
         self.p = None
+
+class WebSocketClient(QObject):
+    message_received = Signal(str)
+
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        self.ws = None
+        self.thread = None
+    
+    def on_message(self, ws, message):
+        self.message_received.emit(message)
+
+    def on_error(self, ws, error):
+        print(f"Error: {error}")
+    
+    def on_close(self, ws, close_status_code, close_msg):
+        print("Connection closed")
+        # self.start()
+
+    def on_open(self, ws):
+        # ws.send("Hello from websocket-client")
+        print("Connection opened")
+    
+
+    def start(self):
+        websocket.enableTrace(True)
+        self.ws = websocket.WebSocketApp(self.url,
+                                         on_open = self.on_open,
+                                         on_message=self.on_message,
+                                         on_error=self.on_error,
+                                         on_close= self.on_close)
+        self.thread = threading.Thread(target = self.ws.run_forever)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def send_message(self, message):
+        if self.ws and self.ws.sock and self.ws.sock.connected:
+            self.ws.send(message)
+
 if __name__ == "__main__":
     app = QApplication([])
 
-    client = MyTcpClient()
-    client.connect_to_server("127.0.0.1", 12345)
-    # tarrafa = Tarrafa()
+    # client = MyTcpClient()
+    # client.connect_to_server("127.0.0.1", 12345)
+    # websocket_url = "ws://localhost:5000/socket.io/?transport=websocket"
+    # websocket_client = WebSocketClient(websocket_url)
+    # websocket_client.start()
+    # sio.connect("http://localhost:5000")
+    # sio.emit("message", {"from": "client"})
     widget = MainWindow()
     widget.resize(400, 300)
     widget.show()
