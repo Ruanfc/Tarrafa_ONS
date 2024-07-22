@@ -5,11 +5,10 @@ import os
 from PySide6.QtWidgets import QWidget, QApplication, QFileDialog, QGroupBox, QGridLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QHBoxLayout, QVBoxLayout, QCheckBox
 from PySide6.QtCore import QProcess
 
-from PySide6.QtCore import QCoreApplication, QIODevice, QByteArray
+from PySide6.QtCore import QCoreApplication, QIODevice, QByteArray, Signal
 from PySide6.QtNetwork import QTcpSocket
 import json
 
-import time
 # from tarrafa_server import Tarrafa
 class MainWindow(QWidget):
     def __init__(self):
@@ -22,10 +21,15 @@ class MainWindow(QWidget):
         self.outputLabel = QLabel("Diretório de Saída:")
         self.outputLineEdit = QLineEdit()
         self.outputButton = QPushButton("Procurar")
-        self.regexTextEdit = QTextEdit() # Descobrir como colocar texto sugestivo e regular as dimensões
+        self.regexLabel = QLabel("Inserir padrão Regex:")
+        self.regexLineEdit = QLineEdit() # Descobrir como colocar texto sugestivo e regular as dimensões
         # Check boxes
         self.motivoRevisaoCheckBox = QCheckBox("Ignorar Motivo da Revisão")
         self.listaDistribuicaoCheckBox = QCheckBox("Ignorar Lista de distribuição")
+        # Result Text Edit
+        self.resultLabel = QLabel("Resultado:")
+        self.resultTextEdit = QTextEdit()
+        self.resultTextEdit.setReadOnly(True)
         # Message Label
         self.messageLabel = QLabel("")
 
@@ -37,10 +41,13 @@ class MainWindow(QWidget):
         self.grid.addWidget(self.outputLabel, 1,0)
         self.grid.addWidget(self.outputLineEdit, 1,1)
         self.grid.addWidget(self.outputButton, 1,2)
-        self.grid.addWidget(self.regexTextEdit, 2,0, 1, 3)
-        self.grid.addWidget(self.motivoRevisaoCheckBox, 3,0, 1,3)
-        self.grid.addWidget(self.listaDistribuicaoCheckBox, 4,0, 1,3)
-        self.grid.addWidget(self.messageLabel, 5,0, 1,3)
+        self.grid.addWidget(self.regexLabel, 2,0)
+        self.grid.addWidget(self.regexLineEdit, 3,0, 1,3)
+        self.grid.addWidget(self.motivoRevisaoCheckBox, 4,0, 1,3)
+        self.grid.addWidget(self.listaDistribuicaoCheckBox, 5,0, 1,3)
+        self.grid.addWidget(self.resultLabel, 6,0)
+        self.grid.addWidget(self.resultTextEdit, 7,0, 1,3)
+        self.grid.addWidget(self.messageLabel, 8,0, 1,3)
         # Botões
         self.actionLayout = QHBoxLayout()
         self.gerarExcel_btn = QPushButton("Salvar Excel")
@@ -67,6 +74,8 @@ class MainWindow(QWidget):
         self.client = MyTcpClient()
         self.client.connect_to_server("127.0.0.1", 12345)
 
+        self.client.message_receive.connect(self.setResultTextEdit) # Conecta mensagem ao textedit
+
     @QtCore.Slot()
     def getInputDir(self):
         self.inputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd()).replace("/", os.path.sep)
@@ -85,7 +94,8 @@ class MainWindow(QWidget):
 
     @QtCore.Slot()
     def rodar_tarrafa(self):
-        text = self.regexTextEdit.toPlainText()
+        # text = self.regexLineEdit.toPlainText()
+        text = str(self.regexLineEdit.text())
         if text != "":
             self.send2server("search_regex", text)
     
@@ -97,7 +107,11 @@ class MainWindow(QWidget):
         json_byte_array = QByteArray(json_str.encode("utf-8"))
         self.client.write(json_byte_array)
 
+    def setResultTextEdit(self, message):
+        self.resultTextEdit.setText(message)
+
 class MyTcpClient(QTcpSocket):
+    message_receive = Signal(str)
     def __init__(self):
         super().__init__()
         # self.p = None
@@ -120,8 +134,10 @@ class MyTcpClient(QTcpSocket):
     def read_data(self):
         while self.bytesAvailable():
             data = self.readAll()
-            print(f"Received from server: {data.data().decode('utf-8')}")
+            decodedData = data.data().decode("utf-8")
+            print(f"Received from server: {decodedData}")
             # TODO: Fazer aparecer dados na interface
+            self.message_receive.emit(decodedData)
 
     def on_error(self, socket_error):
         print(f"Socket error: {self.errorString()}")
@@ -171,7 +187,7 @@ if __name__ == "__main__":
 
     # tarrafa = Tarrafa()
     widget = MainWindow()
-    widget.resize(400, 300)
+    widget.resize(400, 600)
     widget.show()
 
 sys.exit(app.exec())
