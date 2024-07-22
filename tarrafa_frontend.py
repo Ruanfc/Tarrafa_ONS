@@ -63,43 +63,39 @@ class MainWindow(QWidget):
 
         self.setLayout(self.VLayout)
         self.setWindowTitle("Tarrafa")
-        # self.hello = ["Hallo Welt", "Hei maailma", "Hola Mundo", "Привет мир"]
 
-        # self.button = QtWidgets.QPushButton("Click me!")
-        # self.text = QtWidgets.QLabel("Hello World",
-        #                              alignment=QtCore.Qt.AlignCenter)
-
-        # self.layout = QtWidgets.QVBoxLayout(self)
-        # self.layout.addWidget(self.text)
-        # self.layout.addWidget(self.button)
-
-        # self.button.clicked.connect(self.magic)
+        self.client = MyTcpClient()
+        self.client.connect_to_server("127.0.0.1", 12345)
 
     @QtCore.Slot()
     def getInputDir(self):
-        self.inputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd())
+        self.inputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd()).replace("/", os.path.sep)
         self.inputLineEdit.setText(self.inputDir)
     @QtCore.Slot()
     def getoutputDir(self):
-        self.outputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd())
+        self.outputDir = QFileDialog.getExistingDirectory(self, "Abrir Diretório", os.getcwd()).replace("/", os.path.sep)
         self.outputLineEdit.setText(self.outputDir)
     @QtCore.Slot()
     def salvar_excel(self):
         pass
     @QtCore.Slot()
     def gerarTxt(self):
-        # tarrafa.convertAll(self.outputDir)
-        pass
+        if (self.inputDir) and (self.outputDir):
+            self.send2server("convertAll", self.inputDir, self.outputDir)
 
     @QtCore.Slot()
     def rodar_tarrafa(self):
         text = self.regexTextEdit.toPlainText()
         if text != "":
-            dict2send = {"comando": "search_regex", "args" : (text,)}
-            json_str = json.dumps(dict2send)
-            json_byte_array = QByteArray(json_str.encode("utf-8"))
-            client.write(json_byte_array)
-
+            self.send2server("search_regex", text)
+    
+    def send2server(self, comando, *args, **kwargs):
+        dict2send = {"comando": comando, "args": args}
+        if kwargs:
+            dict2send += kwargs
+        json_str = json.dumps(dict2send)
+        json_byte_array = QByteArray(json_str.encode("utf-8"))
+        self.client.write(json_byte_array)
 
 class MyTcpClient(QTcpSocket):
     def __init__(self):
@@ -120,8 +116,6 @@ class MyTcpClient(QTcpSocket):
 
     def on_connected(self):
         print("Connected to server")
-        self.write(b'Hello, Server!')
-        # self.write(b"print('Hello, Server!')")
 
     def read_data(self):
         while self.bytesAvailable():
@@ -174,8 +168,6 @@ class MyTcpClient(QTcpSocket):
 if __name__ == "__main__":
     app = QApplication([])
 
-    client = MyTcpClient()
-    client.connect_to_server("127.0.0.1", 12345)
     # tarrafa = Tarrafa()
     widget = MainWindow()
     widget.resize(400, 300)

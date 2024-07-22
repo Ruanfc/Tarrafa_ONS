@@ -24,7 +24,7 @@ class Tarrafa():
         print(f'Server started on {self.host}:{self.port}')
 
         # Padrões regex previamente compilados para ganhos de performance
-        ig_x = lambda start_marker, end_marker : f"(?={start_marker}).*?(?<={end_marker})"
+        ig_x = lambda start_marker, end_marker : f"(?<={start_marker}).*?(?={end_marker})"
         self.re_MD = re.compile(ig_x("MOTIVO DA REVISÃO", "ÍNDICE"), re.DOTALL)
         self.re_M = re.compile(ig_x("MOTIVO DA REVISÃO", "TABELA DE DISTRIBUIÇÃO"), re.DOTALL)
         self.re_D = re.compile(ig_x("TABELA DE DISTRIBUIÇÃO", "ÍNDICE"), re.DOTALL)
@@ -55,10 +55,7 @@ class Tarrafa():
                     # data = dict(message)
                     print(f'Dados recebidos: {data} no tipo {type(data)}')
                     # Processa os dados e prepara resposta
-                    if data != "Hello, Server!":
-                        return_obj = eval("self." + data["comando"] + f"(*{data["args"]})")
-                    else:
-                        return_obj = "Hello, Client!"
+                    return_obj = eval("self." + data["comando"] + f"(*{data['args']})")
                     response = {"status": "success", "received": return_obj}
                     response_message = json.dumps(response)
                     client_socket.sendall(response_message.encode('utf-8'))
@@ -75,22 +72,31 @@ class Tarrafa():
         return glob(os.path.join(dr, "**/[A-Z]*.{}".format(ext)), recursive=True)
 
     # Worker utilizado para conversão dos documentos normativos em txt
-    def convertWorker(self, filename):
-        print(filename)
-        text = docx2txt.process(filename)
-        f = open(os.path.splitext(filename)[0] + ".txt", "w", encoding="utf-8")
+    def convertWorker(self, dirs):
+        input_filename = dirs[0]
+        text = docx2txt.process(input_filename)
+        output_filename = os.path.splitext(dirs[1])[0] + ".txt"
+        os.makedirs(os.path.dirname(output_filename), exist_ok = True)
+        f = open(output_filename, "w+", encoding="utf-8")
         f.write(text)
         f.close()
-        return filename
+        return output_filename
 
     # [FRONTEND] Converte todos os documentos docx em txt.
-    def convertAll(self, output_dir = os.getcwd()):
-        pool = mp.Pool(10)
-        results =  pool.imap_unordered(self.convertWorker, self.find_ext(output_dir, "docx"))
+    def convertAll(self, *args):
+        input_dir = args[0]
+        output_dir = args[1]
+        pool = mp.Pool(self.cores)
+        list_input_files = self.find_ext(input_dir, "docx")
+        list_output_files = [ x.replace(input_dir, output_dir) for x in list_input_files]
+        results =  pool.imap_unordered(self.convertWorker, tuple(zip(list_input_files, list_output_files)))
+        listaFinal = []
         for result in results:
             print(result)
+            listaFinal.append(result)
         pool.close()
         pool.join()
+        return listaFinal
 
     # Worker utilizado para captura de padrão regex
     # def regexWorker(self, txtfilename, re_input):
