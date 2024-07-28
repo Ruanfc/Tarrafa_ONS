@@ -1,0 +1,6 @@
+inputDir:{{inputDir}}
+outputDir:{{outputDir}}
+regexText:{{regexText}}
+igMotivo:{{igMotivo}}
+igTabDist:{{igTabDist}}
+---

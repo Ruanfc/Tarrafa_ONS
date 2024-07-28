@@ -8,4 +8,5 @@ Tarrafa é uma aplicação em Python que serve para identificar arquivos que pos
 A partir disso, o código pode ser rodado por python .\tarrafa_frontend.py.
 
 ## Criação de executável
-Após a instalação, o executável pode ser criado a partir do pyinstaller
+Após a instalação, o executável pode ser criado a partir do pyinstaller. Durante a criação do executável, é necessário incluir dois arquivos na montagem: logtemplate.txt e tarrafa_server.py
+Os demais arquivos não precisam ser incluídos. Os arquivos tarrafa_batch.py e tarrafa_static.py são versões simplificadas do tarrafa. Note que o arquivo samply.py mostra um uso simplifado do Tarrafa.
