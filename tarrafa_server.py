@@ -28,18 +28,19 @@ class Tarrafa():
         self.re_MD = re.compile(ig_x("MOTIVO DA REVISÃO", "ÍNDICE"), re.DOTALL)
         self.re_M = re.compile(ig_x("MOTIVO DA REVISÃO", "TABELA DE DISTRIBUIÇÃO"), re.DOTALL)
         self.re_D = re.compile(ig_x("TABELA DE DISTRIBUIÇÃO", "ÍNDICE"), re.DOTALL)
+
     
     def start_server(self):
         while True:
-            client_socket, client_address = self.server_socket.accept()
-            print(f'Nova conexão de {client_address}')
+            self.client_socket, self.client_address = self.server_socket.accept()
+            print(f'Nova conexão de {self.client_address}')
             """
             Normalmente, o ideal é que o servidor seja criado em paralelo para deixar a main thread livre,
             mas como este processo já é o processo em background, então não precisa. Aninhar multiprocessing
             em threading trás problemas imprevisíveis.
             """
             # threading.Thread(target=self.handle_client, args=(client_socket,)).start()
-            self.handle_client(client_socket)
+            self.handle_client(self.client_socket)
     
     """
     Conecta cliente ao servidor e espera por novas mensagens
@@ -55,16 +56,20 @@ class Tarrafa():
                     # data = dict(message)
                     print(f'Dados recebidos: {data} no tipo {type(data)}')
                     # Processa os dados e prepara resposta
-                    return_obj = eval("self." + data["comando"] + f"(*{data['args']})")
-                    response = {"status": "success", "received": return_obj}
-                    response_message = json.dumps(response, ensure_ascii=False)
-                    client_socket.sendall(response_message.encode('utf-8'))
+                    str_kwargs = ""
+                    if 'kwargs' in data:
+                        str_kwargs = f", **{data['kwargs']}"
+                    eval_string = "self." + data['comando'] + f"(*{data['args']}{str_kwargs})"
+                    return_obj = eval(eval_string)
+                    # response = {"status": "success", "received": return_obj}
+                    # response_message = json.dumps(response, ensure_ascii=False)
+                    # client_socket.sendall(response_message.encode('utf-8'))
                 except json.JSONDecodeError:
                     print('Received invalid JSON data')
-                    response = {"status": "error", "message": "Invalid JSON"}
-                    client_socket.sendall(json.dumps(response, ensure_ascii=False).encode("utf-8"))
+                    self.report_error("JSONDecodeError: JSON inválido")
                 except Exception as e:
                     print(f'Error: {e}')
+                    self.report_error(f"Error: {e}")
                     break
 
     # Acha arquivos em um diretório recursivamente pela sua extensão
@@ -84,6 +89,7 @@ class Tarrafa():
 
     # [FRONTEND] Converte todos os documentos docx em txt.
     def convertAll(self, *args):
+        self.report_message("Carregando...")
         input_dir = args[0]
         output_dir = args[1]
         pool = mp.Pool(self.cores)
@@ -92,14 +98,16 @@ class Tarrafa():
         results =  pool.imap_unordered(self.convertWorker, tuple(zip(list_input_files, list_output_files)))
         listaFinal = []
         for result in results:
-            print(result)
-            listaFinal.append(result)
+            result2send = result.replace("\\", "/")
+            listaFinal.append(result2send)
+            self.report_log(result2send)
         pool.close()
         pool.join()
-        return listaFinal
+        # return listaFinal
+        self.report_success("Arquivos convertidos para txt")
+        return ""
 
     # Worker utilizado para captura de padrão regex
-    # def regexWorker(self, txtfilename, re_input):
     def regexWorker(self, txtfilename, re_input, igM=False, igD=False):
         txt_file = open(txtfilename, "r", encoding="utf-8")
         text = txt_file.read()
@@ -119,16 +127,19 @@ class Tarrafa():
     # Método usado como callback para confirmar match do regex sempre que o regexWorker finaliza em cada arquivo txt
     def confirmaMatch(self, x):
         if x != None:
-            print(x)
+            self.report_log(x)
 
     # [FRONTEND] Método para fazer a busca em todos os arquivos.
-    def search_regex(self, input_string):
-    # def search_regex(self, input_string, ignoraMotivoRevisao = False, ignoraListaDistribuicao = False, searchDir=os.getcwd()):
+    def search_regex(self, input_string, output_directory=os.getcwd(), igM = False, igD = False):
+        self.report_message("Carregando...")
         re_input = re.compile(input_string, re.I)
         results = []
         pool = mp.Pool(processes=self.cores)
-        for txtfilename in self.find_ext(os.getcwd(), "txt"):
-            result = pool.apply_async(self.regexWorker, (txtfilename, re_input), callback= self.confirmaMatch)
+        for txtfilename in self.find_ext(output_directory, "txt"):
+            result = pool.apply_async(self.regexWorker,
+                                      args=(txtfilename, re_input),
+                                      kwds={"igM" : igM, "igD" : igD},
+                                      callback= self.confirmaMatch)
             results.append(result)
         # Espaço para mais código
         listaFinal = []
@@ -138,7 +149,10 @@ class Tarrafa():
                 listaFinal.append(elemento)
         pool.close()
         pool.join()
-        return listaFinal
+        self.doclist = listaFinal
+        self.report_success("Busca bem sucedida!")
+        return ""
+        # return listaFinal
 
     def remove_ignored_sections(self, text, re_ignored):
         return re_ignored.sub("", text)
@@ -146,45 +160,65 @@ class Tarrafa():
     # [FRONTEND] Salva resultados tanto em excel como em txt
     def save_results(self):
         self.save_results_to_excel()
-        self.save_results_to_txt()
+        # self.save_results_to_txt()
 
     # [FRONTEND] Adiciona os resultados de pesquisa a um novo arquivo em excel
-    def save_results_to_excel(self):
+    def save_results_to_excel(self, output_directory = os.getcwd()):
         try:
             workbook = openpyxl.Workbook()
             sheet = workbook.active
             sheet.title = "Resultados da Busca"
-            sheet.append(["Nome do Arquivo", "Caminho do Arquivo"])
+            sheet.append(["Nome do Arquivo", "Documento Revisão"])
 
-            for file, path in self.doclist:
-                sheet.append([file, path])
+            re_identificador_revisao = re.compile(r"([A-Z]{2}-.*?)_Rev\.(\d+)")
+            # re_revisao = re.compile(r"(?<=_Rev\.)\d+")
+            for file in self.doclist:
+                sheet.append(list(re_identificador_revisao.findall(file)[0]))
 
-            output_path = os.path.join(self.output_directory, "resultados_busca.xlsx")
+            output_path = os.path.join(output_directory, "resultados_busca.xlsx")
             workbook.save(output_path)
-            self.report_message(f"Resultados salvos em {output_path}")
+            self.report_warning(f"Resultados salvos no diretório de saída.")
+        except IndexError:
+            self.report_error(f"{file} não é Documento Normativo")
         except Exception as e:
-            self.report_error(f"Falha ao salvar os resultados no Excel: {e}")
+            self.report_error(f"Falha ao salvar no Excel: {e}")
+        return ""
     # [FRONTEND] Salva o resultado das buscas em um arquivo txt
-    def save_results_to_txt(self):
-        try:
-            output_path = os.path.join(self.output_directory, "resultados_busca.txt")
-            with open(output_path, 'w') as file:
-                file.write(', '.join([file[0] for file in self.doclist]))
-            self.report_message(f"Resultados salvos em {output_path}")
-        except Exception as e:
-            self.report_error(f"Falha ao salvar os resultados no arquivo de texto: {e}")
+    # def save_results_to_txt(self):
+    #     try:
+    #         output_path = os.path.join(self.output_directory, "resultados_busca.txt")
+    #         with open(output_path, 'w') as file:
+    #             file.write(', '.join([file[0] for file in self.doclist]))
+    #         self.report_message(f"Resultados salvos em {output_path}")
+    #     except Exception as e:
+    #         self.report_error(f"Falha ao salvar os resultados no arquivo de texto: {e}")
 
+    def report_warning(self, message):
+        result2senddict =  {"status": "warning", "received": [message]}
+        resultDumps = json.dumps(result2senddict, ensure_ascii=False)
+        self.client_socket.sendall(resultDumps.encode("utf-8"))
     def report_error(self, message):
-        pass
+        result2senddict =  {"status": "error", "received": [message]}
+        resultDumps = json.dumps(result2senddict, ensure_ascii=False)
+        self.client_socket.sendall(resultDumps.encode("utf-8"))
     def report_message(self, message):
-        pass
+        result2senddict =  {"status": "message", "received": [message]}
+        resultDumps = json.dumps(result2senddict, ensure_ascii=False)
+        self.client_socket.sendall(resultDumps.encode("utf-8"))
+    def report_log(self, message):
+        result2senddict =  {"status": "onload", "received": [message]}
+        resultDumps = json.dumps(result2senddict, ensure_ascii=False)
+        self.client_socket.sendall(resultDumps.encode("utf-8"))
+    def report_success(self, message):
+        result2senddict =  {"status": "success", "received": [message]}
+        resultDumps = json.dumps(result2senddict, ensure_ascii=False)
+        self.client_socket.sendall(resultDumps.encode("utf-8"))
 
 
 if __name__ == "__main__":
     start_time = time.time()
-    # convertAll()
+    mp.freeze_support()
     tarrafa = Tarrafa()
     tarrafa.start_server()
-    # tarrafa.search_regex(r"Recife II")
 
     print("--- %s seconds ---" % (time.time() - start_time))

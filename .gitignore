@@ -1,1 +1,6 @@
 Documento Normativo/**
+build/**
+dist/**
+output/**
+log.txt
+tarrafa.spec
