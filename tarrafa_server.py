@@ -6,6 +6,7 @@ import time
 import openpyxl
 import docx2txt
 import multiprocessing as mp
+from io import BytesIO
 
 import socket
 import json
@@ -79,7 +80,11 @@ class Tarrafa():
     # Worker utilizado para conversão dos documentos normativos em txt
     def convertWorker(self, dirs):
         input_filename = dirs[0]
-        text = docx2txt.process(input_filename)
+        with open(input_filename, 'rb') as f:
+            source_stream = BytesIO(f.read())
+        text = docx2txt.process(source_stream)
+        source_stream.close()
+        # text = docx2txt.process(input_filename)
         output_filename = os.path.splitext(dirs[1])[0] + ".txt"
         os.makedirs(os.path.dirname(output_filename), exist_ok = True)
         f = open(output_filename, "w+", encoding="utf-8")
@@ -121,8 +126,8 @@ class Tarrafa():
             text = self.remove_ignored_sections(text, self.re_D)
         x = re_input.findall(text)
         if x:
-            txtfilename = txtfilename.split('\\')[-1]
-            return txtfilename
+            head , tail = os.path.split(txtfilename)
+            return tail
             
     # Método usado como callback para confirmar match do regex sempre que o regexWorker finaliza em cada arquivo txt
     def confirmaMatch(self, x):

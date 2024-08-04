@@ -95,7 +95,7 @@ class MainWindow(QWidget):
     def readLog(self):
         try:
             # Try to open the file in read mode
-            with open(os.path.join(self.client.base_path, 'log.txt'), 'r') as file:
+            with open(os.path.join(os.getcwd(), 'log.txt'), 'r', encoding='utf-8') as file:
                 content = file.read()
                 self.inputLineEdit.setText(self.re_readinputDir.findall(content)[0])
                 self.outputLineEdit.setText(self.re_readoutputDir.findall(content)[0])
@@ -194,7 +194,7 @@ class MainWindow(QWidget):
         return logtempStr
 
     def updatelogfile(self):
-        logfile = open(os.path.join(self.client.base_path, "log.txt"), "w+", encoding="utf-8")
+        logfile = open(os.path.join(os.getcwd(), "log.txt"), "w+", encoding="utf-8")
         logfile.write(self.composeLog())
         logfile.close()
 
@@ -213,8 +213,8 @@ class MyTcpClient(QTcpSocket):
             self.base_path = os.path.abspath(".")
         
         # Keep this uncommented for initiating background server
-        # self.p = None
-        # self.start_process()
+        self.p = None
+        self.start_process()
 
         self.connected.connect(self.on_connected)
         self.readyRead.connect(self.read_data)
@@ -255,8 +255,13 @@ class MyTcpClient(QTcpSocket):
             self.p.readyReadStandardError.connect(self.handle_stderr)
             self.p.stateChanged.connect(self.handle_state)
             self.p.finished.connect(self.process_finished)  # Clean up once complete.
-            path = os.path.join(self.base_path, "tarrafa_server.py")
-            self.p.start("python", [path])
+            try:
+                self.p.start(os.path.join(os.getcwd(),"tarrafa_server.exe"))
+            except:
+                print(f"Arquivo tarrafa_server.exe não encontrado.\npython .\\tarrafa_server")
+                path = os.path.join(self.base_path, "tarrafa_server.py")
+                self.p.start("python", [path])
+                
     
     def handle_stderr(self):
         data = self.p.readAllStandardError()
