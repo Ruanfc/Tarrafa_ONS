@@ -1,9 +1,10 @@
 from tarrafa_batch import Tarrafa as Tf
 if __name__ == "__main__":
-    tf = Tf(r"C:\\Users\\User\\OneDrive\\Documentos\\GitHub\\Tarrafa_ONS\\Documento Normativo",
-            r"C:\\Users\\User\\Desktop\\saida_tarrafa\\Documento Normativo")
+    tf = Tf(r"C:\\Users\\User\\OneDrive\\Documentos\\GitHub\\Tarrafa_ONS\\pl",
+            # r"C:\\Users\\User\\Desktop\\saida_tarrafa\\Documento Normativo")
+            r"C:\\Users\\User\\Desktop\\saida_pl")
     # tf.convertAll("pdf")
-    lt345kv = r"LT\s*345\s*kV\s*"
+    lt345kv = r"Contingência.*LT\s*345\s*kV\s*"
     SEs = [r"Furnas",
           r"Itumbiara",
           r"Jaguara",

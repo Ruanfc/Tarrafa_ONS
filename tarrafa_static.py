@@ -1,6 +1,6 @@
 import os
 from glob import glob
-import re
+import regex as re
 import time
 
 import docx2txt

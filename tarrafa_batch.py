@@ -1,6 +1,6 @@
 import os
 from glob import glob
-import re
+import regex as re
 import time
 
 import pdfminer
@@ -15,17 +15,33 @@ class Tarrafa:
         self.output_dir = output_dir
         self.cores = cores
 
+    # Deprecation ???
     def find_ext(self, dr, ext):
         return glob(os.path.join(dr, "**/[A-Z]*.{}".format(ext)), recursive=True)
+    
+    def walk_with_suffixes(self, dr, *exts):
+        results = []
+        for r, d, f in os.walk(dr):
+            for ff in f:
+                for e in exts:
+                    if ff.endswith(e):
+                        results.append(os.path.join(r,ff))
+                        break
+        return results
 
     def convertWorker(self, dirs):
         input_filename = dirs[0]
         extension = input_filename.split(".")[-1]
+        if "~" in input_filename:
+            return "Arquivo inválido"
         if extension == "pdf":
             lap = LAParams(detect_vertical=True)
             text = extract_text(input_filename, laparams= lap)
-        else:
+        elif extension == "docx":
+            print(input_filename)
             text = docx2txt.process(input_filename)
+        else:
+            return "Extensão fora do escopo."
         output_filename = os.path.splitext(dirs[1])[0] + ".txt"
         os.makedirs(os.path.dirname(output_filename), exist_ok = True)
         f = open(output_filename, "w+", encoding="utf-8")
@@ -33,9 +49,11 @@ class Tarrafa:
         f.close()
         return output_filename
 
-    def convertAll(self, extension = "docx"):
+    # def convertAll(self, extension = "docx"):
+    def convertAll(self, extensions = (".docx", ".pdf")):
         pool = mp.Pool(self.cores)
-        list_input_files = self.find_ext(self.input_dir, extension)
+        # list_input_files = self.find_ext(self.input_dir, extension)
+        list_input_files = self.walk_with_suffixes(self.input_dir, extensions)
         list_output_files = [ x.replace(self.input_dir, self.output_dir) for x in list_input_files]
         results =  pool.imap_unordered(self.convertWorker, tuple(zip(list_input_files, list_output_files)))
         listaFinal = []

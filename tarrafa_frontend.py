@@ -136,7 +136,8 @@ class MainWindow(QWidget):
     def gerarTxt(self):
         self.fillDirs()
         if (self.inputDir != "") and (self.outputDir !=""):
-            self.send2server("convertAll", self.inputDir, self.outputDir)
+            # self.send2server("convertAll", self.inputDir, self.outputDir)
+            self.send2server("convertAll", ('.docx', '.pdf'), kwargs={"iodirs" : (self.inputDir, self.outputDir)})
 
     @QtCore.Slot()
     def rodar_tarrafa(self):
@@ -213,8 +214,8 @@ class MyTcpClient(QTcpSocket):
             self.base_path = os.path.abspath(".")
         
         # Keep this uncommented for initiating background server
-        self.p = None
-        self.start_process()
+        # self.p = None
+        # self.start_process()
 
         self.connected.connect(self.on_connected)
         self.readyRead.connect(self.read_data)
