@@ -1,18 +1,28 @@
 import os
 from glob import glob
-import re
+# import re
+import regex as re
 import time
 
 import openpyxl
 import docx2txt
 import multiprocessing as mp
+from io import BytesIO
+
+import pdfminer
+from pdfminer.layout import LAParams
+from pdfminer.high_level import extract_text
 
 import socket
 import json
 
+import pyodbc
+import pandas as pd
+
 class Tarrafa():
-    def __init__(self, host='127.0.0.1', port = 12345, cores = mp.cpu_count()-2):
-        # pdf ou docx?
+    def __init__(self, host='127.0.0.1', port = 12345, cores = mp.cpu_count()-1, input_dir = os.getcwd(), output_dir = os.getcwd()):
+        self.input_dir = input_dir
+        self.output_dir = output_dir
         # numero de cores
         self.cores = cores
 
@@ -25,9 +35,9 @@ class Tarrafa():
 
         # Padrões regex previamente compilados para ganhos de performance
         ig_x = lambda start_marker, end_marker : f"(?<={start_marker}).*?(?={end_marker})"
-        self.re_MD = re.compile(ig_x("MOTIVO DA REVISÃO", "ÍNDICE"), re.DOTALL)
-        self.re_M = re.compile(ig_x("MOTIVO DA REVISÃO", "TABELA DE DISTRIBUIÇÃO"), re.DOTALL)
-        self.re_D = re.compile(ig_x("TABELA DE DISTRIBUIÇÃO", "ÍNDICE"), re.DOTALL)
+        self.re_MD = re.compile(ig_x("MOTIVO DA REVISÃO", "[ÍI]NDICE"), re.DOTALL)
+        self.re_M = re.compile(ig_x("MOTIVO DA REVISÃO", "(TABELA|LISTA) DE DISTRIBUIÇÃO"), re.DOTALL)
+        self.re_D = re.compile(ig_x("(TABELA|LISTA) DE DISTRIBUIÇÃO", "[ÍI]NDICE"), re.DOTALL)
 
     
     def start_server(self):
@@ -72,14 +82,38 @@ class Tarrafa():
                     self.report_error(f"Error: {e}")
                     break
 
+    # Deprecation ???
     # Acha arquivos em um diretório recursivamente pela sua extensão
     def find_ext(self, dr, ext):
         return glob(os.path.join(dr, "**/[A-Z]*.{}".format(ext)), recursive=True)
 
+    # Acha arquivos em um diretório recursivamente pela sua extensão
+    def walk_with_suffixes(self, dr, *exts):
+        results = []
+        for r, d, f in os.walk(dr):
+            for ff in f:
+                for e in exts:
+                    if ff.endswith(e):
+                        results.append(os.path.join(r,ff))
+                        break
+        return results
+
     # Worker utilizado para conversão dos documentos normativos em txt
     def convertWorker(self, dirs):
         input_filename = dirs[0]
-        text = docx2txt.process(input_filename)
+        extension = input_filename.split(".")[-1]
+        if "~" in input_filename:
+            return "Arquivo inválido"
+        with open(input_filename, 'rb') as f:
+            source_stream = BytesIO(f.read())
+        if extension == "pdf":
+            lap = LAParams(detect_vertical=True)
+            text = extract_text(input_filename, laparams = lap)
+        elif extension == "docx":
+            text = docx2txt.process(source_stream)
+        else:
+            return "Extensao fora do escopo."
+        source_stream.close()
         output_filename = os.path.splitext(dirs[1])[0] + ".txt"
         os.makedirs(os.path.dirname(output_filename), exist_ok = True)
         f = open(output_filename, "w+", encoding="utf-8")
@@ -88,13 +122,18 @@ class Tarrafa():
         return output_filename
 
     # [FRONTEND] Converte todos os documentos docx em txt.
-    def convertAll(self, *args):
+    def convertAll(self, extensions = (".docx", ".pdf"), iodirs: tuple | list | None = None):
         self.report_message("Carregando...")
-        input_dir = args[0]
-        output_dir = args[1]
+        # input_dir = args[0]
+        # output_dir = args[1]
+        if iodirs is not None:
+            self.input_dir = iodirs[0]
+            self.output_dir = iodirs[1]
+            
         pool = mp.Pool(self.cores)
-        list_input_files = self.find_ext(input_dir, "docx")
-        list_output_files = [ x.replace(input_dir, output_dir) for x in list_input_files]
+        # list_input_files = self.find_ext(input_dir, "docx")
+        list_input_files = self.walk_with_suffixes(self.input_dir, tuple(extensions))
+        list_output_files = [ x.replace(self.input_dir, self.output_dir) for x in list_input_files]
         results =  pool.imap_unordered(self.convertWorker, tuple(zip(list_input_files, list_output_files)))
         listaFinal = []
         for result in results:
@@ -121,8 +160,8 @@ class Tarrafa():
             text = self.remove_ignored_sections(text, self.re_D)
         x = re_input.findall(text)
         if x:
-            txtfilename = txtfilename.split('\\')[-1]
-            return txtfilename
+            head , tail = os.path.split(txtfilename)
+            return tail
             
     # Método usado como callback para confirmar match do regex sempre que o regexWorker finaliza em cada arquivo txt
     def confirmaMatch(self, x):
@@ -130,12 +169,15 @@ class Tarrafa():
             self.report_log(x)
 
     # [FRONTEND] Método para fazer a busca em todos os arquivos.
-    def search_regex(self, input_string, output_directory=os.getcwd(), igM = False, igD = False):
+    def search_regex(self, input_string, output_directory= None, igM = False, igD = False):
+        if output_directory is not None:
+            # Atualiza diretório de saída quando informado
+            self.output_dir = output_directory
         self.report_message("Carregando...")
         re_input = re.compile(input_string, re.I)
         results = []
         pool = mp.Pool(processes=self.cores)
-        for txtfilename in self.find_ext(output_directory, "txt"):
+        for txtfilename in self.find_ext(self.output_dir, "txt"):
             result = pool.apply_async(self.regexWorker,
                                       args=(txtfilename, re_input),
                                       kwds={"igM" : igM, "igD" : igD},
@@ -163,26 +205,47 @@ class Tarrafa():
         # self.save_results_to_txt()
 
     # [FRONTEND] Adiciona os resultados de pesquisa a um novo arquivo em excel
+    # def save_results_to_excel(self, output_directory = os.getcwd()):
+    #     try:
+    #         workbook = openpyxl.Workbook()
+    #         sheet = workbook.active
+    #         sheet.title = "Resultados da Busca"
+    #         sheet.append(["Nome do Arquivo", "Documento Revisão", "Centro", "Área Elétrica"])
+
+    #         re_identificador_revisao = re.compile(r"([A-Z]{2}-.*?)_Rev\.(\d+)")
+    #         # re_revisao = re.compile(r"(?<=_Rev\.)\d+")
+    #         for file in self.doclist:
+    #             try:
+    #                 sheet.append(list(re_identificador_revisao.findall(file)[0]))
+    #                 # sheet.append(list(re_identificador_revisao.findall(file)[0]) + centro + area)
+    #             except IndexError:
+    #                 self.report_error(f"{file} não é Documento Normativo")
+    #         output_path = os.path.join(output_directory, "resultados_busca.xlsx")
+    #         workbook.save(output_path)
+    #         self.report_warning(f"Resultados salvos no diretório de saída.")
+    #     except Exception as e:
+    #         self.report_error(f"Falha ao salvar no Excel: {e}")
+    #     return ""
     def save_results_to_excel(self, output_directory = os.getcwd()):
-        try:
-            workbook = openpyxl.Workbook()
-            sheet = workbook.active
-            sheet.title = "Resultados da Busca"
-            sheet.append(["Nome do Arquivo", "Documento Revisão"])
+        cnxn = pyodbc.connect("DSN=INBOUND;UID=tableau_sql;PWD=F1H5oP1O50@y")
+        cursor = cnxn.cursor()
+        sql_query = """
+        SELECT dsc_responsavel, id_identificadorleitura, revisao, dsc_usuariomodificacao FROM mpo.tb_documentosmpo td \
+        WHERE id_identificadorleitura IN """
+        re_identificador_revisao = re.compile(r"([A-Z]{2}-.*?)_Rev\.(\d+)")
+        re_revisao = re.compile(r"(?<=_Rev\.)\d+")
+        simplelist = []
+        for file in self.doclist:
+            try:
+                simplelist.append(re_identificador_revisao.findall(file)[0][0])
+            except IndexError:
+                self.report_error(f"{file} não é Documento Normativo")
+        sql_query = sql_query + str(tuple(simplelist)) + ";"
+        cursor.execute(sql_query).fetchall()
+        df_todas = pd.read_sql(sql_query, cnxn)
+        df_todas.to_excel("teste_saida.xlsx")
+        self.report_warning(f"Resultados salvos no diretório de saída.")
 
-            re_identificador_revisao = re.compile(r"([A-Z]{2}-.*?)_Rev\.(\d+)")
-            # re_revisao = re.compile(r"(?<=_Rev\.)\d+")
-            for file in self.doclist:
-                sheet.append(list(re_identificador_revisao.findall(file)[0]))
-
-            output_path = os.path.join(output_directory, "resultados_busca.xlsx")
-            workbook.save(output_path)
-            self.report_warning(f"Resultados salvos no diretório de saída.")
-        except IndexError:
-            self.report_error(f"{file} não é Documento Normativo")
-        except Exception as e:
-            self.report_error(f"Falha ao salvar no Excel: {e}")
-        return ""
     # [FRONTEND] Salva o resultado das buscas em um arquivo txt
     # def save_results_to_txt(self):
     #     try:

@@ -95,7 +95,7 @@ class MainWindow(QWidget):
     def readLog(self):
         try:
             # Try to open the file in read mode
-            with open(os.path.join(self.client.base_path, 'log.txt'), 'r') as file:
+            with open(os.path.join(os.getcwd(), 'log.txt'), 'r', encoding='utf-8') as file:
                 content = file.read()
                 self.inputLineEdit.setText(self.re_readinputDir.findall(content)[0])
                 self.outputLineEdit.setText(self.re_readoutputDir.findall(content)[0])
@@ -136,7 +136,8 @@ class MainWindow(QWidget):
     def gerarTxt(self):
         self.fillDirs()
         if (self.inputDir != "") and (self.outputDir !=""):
-            self.send2server("convertAll", self.inputDir, self.outputDir)
+            # self.send2server("convertAll", self.inputDir, self.outputDir)
+            self.send2server("convertAll", ('.docx', '.pdf'), kwargs={"iodirs" : (self.inputDir, self.outputDir)})
 
     @QtCore.Slot()
     def rodar_tarrafa(self):
@@ -194,7 +195,7 @@ class MainWindow(QWidget):
         return logtempStr
 
     def updatelogfile(self):
-        logfile = open(os.path.join(self.client.base_path, "log.txt"), "w+", encoding="utf-8")
+        logfile = open(os.path.join(os.getcwd(), "log.txt"), "w+", encoding="utf-8")
         logfile.write(self.composeLog())
         logfile.close()
 
@@ -255,8 +256,13 @@ class MyTcpClient(QTcpSocket):
             self.p.readyReadStandardError.connect(self.handle_stderr)
             self.p.stateChanged.connect(self.handle_state)
             self.p.finished.connect(self.process_finished)  # Clean up once complete.
-            path = os.path.join(self.base_path, "tarrafa_server.py")
-            self.p.start("python", [path])
+            try:
+                self.p.start(os.path.join(os.getcwd(),"tarrafa_server.exe"))
+            except:
+                print(f"Arquivo tarrafa_server.exe não encontrado.\npython .\\tarrafa_server")
+                path = os.path.join(self.base_path, "tarrafa_server.py")
+                self.p.start("python", [path])
+                
     
     def handle_stderr(self):
         data = self.p.readAllStandardError()
